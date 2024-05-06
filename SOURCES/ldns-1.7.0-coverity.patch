@@ -1,0 +1,437 @@
+From c5fcd8ab8ee1b66d0ef75b02f72ccfc3ebf50cf5 Mon Sep 17 00:00:00 2001
+From: =?UTF-8?q?Petr=20Men=C5=A1=C3=ADk?= <pemensik@redhat.com>
+Date: Wed, 12 Sep 2018 15:01:37 +0200
+Subject: [PATCH 1/2] Purge unused variables
+
+---
+ packaging/ldns-config.in | 3 ---
+ 1 file changed, 3 deletions(-)
+
+diff --git a/packaging/ldns-config.in b/packaging/ldns-config.in
+index 950c135..a8c860e 100755
+--- a/packaging/ldns-config.in
++++ b/packaging/ldns-config.in
+@@ -1,9 +1,6 @@
+ #!/bin/sh
+ 
+-prefix="@prefix@"
+-exec_prefix="@exec_prefix@"
+ VERSION="@PACKAGE_VERSION@"
+-CPPFLAGS="@CPPFLAGS@ @LIBSSL_CPPFLAGS@ @PYTHON_CPPFLAGS@"
+ LIBS="@LIBS@ @LIBSSL_LIBS@"
+ INCLUDEDIR="@includedir@"
+ LIBVERSION="@VERSION_INFO@"
+-- 
+2.20.1
+
+
+From db06eb482b09a0bcdaf3f688702b1c0df2cb1eca Mon Sep 17 00:00:00 2001
+From: Willem Toorop <willem@nlnetlabs.nl>
+Date: Thu, 11 Jul 2019 15:22:44 +0200
+Subject: [PATCH 2/2] Issues detected in ldns library by scan of Coverity
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+Thanks Petr Menšík
+---
+ dnssec.c        |  6 +++++-
+ dnssec_sign.c   |  4 ++--
+ dnssec_verify.c | 18 ++++++------------
+ dnssec_zone.c   | 23 +++++++++++++++++------
+ host2str.c      | 13 +++++++------
+ host2wire.c     | 22 ++++++++++++++++------
+ net.c           | 12 ++++++++++--
+ packet.c        |  2 ++
+ radix.c         |  5 ++++-
+ str2host.c      |  2 ++
+ 10 files changed, 71 insertions(+), 36 deletions(-)
+
+diff --git a/dnssec.c b/dnssec.c
+index e3c99de..b2dd3f3 100644
+--- a/dnssec.c
++++ b/dnssec.c
+@@ -149,6 +149,7 @@ ldns_dnssec_nsec3_closest_encloser(const ldns_rdf *qname,
+ 	                LDNS_FREE(salt);
+ 	                ldns_rdf_deep_free(zone_name);
+ 	                ldns_rdf_deep_free(sname);
++			ldns_rdf_deep_free(hashed_sname);
+                         return NULL;
+                 }
+ 
+@@ -1556,6 +1557,7 @@ ldns_pkt_verify_time(const ldns_pkt *p, ldns_rr_type t, const ldns_rdf *o,
+ 	ldns_rr_list *sigs_covered;
+ 	ldns_rdf *rdf_t;
+ 	ldns_rr_type t_netorder;
++	ldns_status status;
+ 
+ 	if (!k) {
+ 		return LDNS_STATUS_ERR;
+@@ -1607,7 +1609,9 @@ ldns_pkt_verify_time(const ldns_pkt *p, ldns_rr_type t, const ldns_rdf *o,
+ 		}
+ 		return LDNS_STATUS_ERR;
+ 	}
+-	return ldns_verify_time(rrset, sigs, k, check_time, good_keys);
++	status = ldns_verify_time(rrset, sigs, k, check_time, good_keys);
++	ldns_rr_list_deep_free(rrset);
++	return status;
+ }
+ 
+ ldns_status
+diff --git a/dnssec_sign.c b/dnssec_sign.c
+index 22f0981..94ea925 100644
+--- a/dnssec_sign.c
++++ b/dnssec_sign.c
+@@ -234,8 +234,6 @@ ldns_sign_public(ldns_rr_list *rrset, ldns_key_list *keys)
+ 
+ 	new_owner = NULL;
+ 
+-	signatures = ldns_rr_list_new();
+-
+ 	/* prepare a signature and add all the know data
+ 	 * prepare the rrset. Sign this together.  */
+ 	rrset_clone = ldns_rr_list_clone(rrset);
+@@ -252,6 +250,8 @@ ldns_sign_public(ldns_rr_list *rrset, ldns_key_list *keys)
+ 	/* sort */
+ 	ldns_rr_list_sort(rrset_clone);
+ 
++	signatures = ldns_rr_list_new();
++
+ 	for (key_count = 0;
+ 		key_count < ldns_key_list_key_count(keys);
+ 		key_count++) {
+diff --git a/dnssec_verify.c b/dnssec_verify.c
+index c554e4f..c7e2fba 100644
+--- a/dnssec_verify.c
++++ b/dnssec_verify.c
+@@ -1583,8 +1583,6 @@ ldns_dnssec_verify_denial_nsec3_match( ldns_rr *rr
+ 	bool wildcard_covered = false;
+ 	ldns_rdf *zone_name;
+ 	ldns_rdf *hashed_name;
+-	/* self assignment to suppress uninitialized warning */
+-	ldns_rdf *next_closer = next_closer;
+ 	ldns_rdf *hashed_next_closer;
+ 	size_t i;
+ 	ldns_status result = LDNS_STATUS_DNSSEC_NSEC_RR_NOT_COVERED;
+@@ -1659,6 +1657,7 @@ ldns_dnssec_verify_denial_nsec3_match( ldns_rr *rr
+ 				}
+ 			}
+ 		}
++		ldns_rdf_deep_free(hashed_name);
+ 		result = LDNS_STATUS_DNSSEC_NSEC_RR_NOT_COVERED;
+ 		/* wildcard no data? section 8.7 */
+ 		closest_encloser = ldns_dnssec_nsec3_closest_encloser(
+@@ -1748,7 +1747,9 @@ ldns_dnssec_verify_denial_nsec3_match( ldns_rr *rr
+ 			/* Query name *is* the "next closer". */
+ 			hashed_next_closer = hashed_name;
+ 		} else {
+-
++			ldns_rdf *next_closer;
++			
++			ldns_rdf_deep_free(hashed_name);
+ 			/* "next closer" has less labels than the query name.
+ 			 * Create the name and hash it.
+ 			 */
+@@ -1762,6 +1763,7 @@ ldns_dnssec_verify_denial_nsec3_match( ldns_rr *rr
+ 					next_closer
+ 					);
+ 			(void) ldns_dname_cat(hashed_next_closer, zone_name);
++			ldns_rdf_deep_free(next_closer);
+ 		}
+ 		/* Find the NSEC3 that covers the "next closer" */
+ 		for (i = 0; i < ldns_rr_list_rr_count(nsecs); i++) {
+@@ -1776,15 +1778,7 @@ ldns_dnssec_verify_denial_nsec3_match( ldns_rr *rr
+ 				break;
+ 			}
+ 		}
+-		if (ldns_dname_label_count(closest_encloser) + 1
+-		    < ldns_dname_label_count(ldns_rr_owner(rr))) {
+-
+-			/* "next closer" has less labels than the query name.
+-			 * Dispose of the temporary variables that held that name.
+-			 */
+-			ldns_rdf_deep_free(hashed_next_closer);
+-			ldns_rdf_deep_free(next_closer);
+-		}
++		ldns_rdf_deep_free(hashed_next_closer);
+ 		ldns_rdf_deep_free(closest_encloser);
+ 	}
+ 
+diff --git a/dnssec_zone.c b/dnssec_zone.c
+index f610a3c..e089754 100644
+--- a/dnssec_zone.c
++++ b/dnssec_zone.c
+@@ -746,6 +746,7 @@ ldns_dnssec_zone_new_frm_fp_l(ldns_dnssec_zone** z, FILE* fp, const ldns_rdf* or
+ 		newzone = NULL;
+ 	} else {
+ 		ldns_dnssec_zone_free(newzone);
++		newzone = NULL;
+ 	}
+ 
+ error:
+@@ -1105,8 +1106,12 @@ ldns_dnssec_zone_add_empty_nonterminals_nsec3(
+ 				ldns_rdf *ent_name;
+ 
+ 				if (!(ent_name = ldns_dname_clone_from(
+-						next_name, i)))
++						next_name, i))) {
++					
++					ldns_rdf_deep_free(l1);
++					ldns_rdf_deep_free(l2);
+ 					return LDNS_STATUS_MEM_ERR;
++				}
+ 
+ 				if (nsec3s && zone->_nsec3params) {
+ 					ldns_rdf *ent_hashed_name;
+@@ -1114,28 +1119,34 @@ ldns_dnssec_zone_add_empty_nonterminals_nsec3(
+ 					if (!(ent_hashed_name =
+ 					    ldns_nsec3_hash_name_frm_nsec3(
+ 							zone->_nsec3params,
+-							ent_name)))
++							ent_name))) {
++						ldns_rdf_deep_free(l1);
++						ldns_rdf_deep_free(l2);
++						ldns_rdf_deep_free(ent_name);
+ 						return LDNS_STATUS_MEM_ERR;
++					}
+ 					node = ldns_rbtree_search(nsec3s, 
+ 							ent_hashed_name);
+ 					if (!node) {
+ 						ldns_rdf_deep_free(l1);
+ 						ldns_rdf_deep_free(l2);
++						ldns_rdf_deep_free(ent_name);
+ 						continue;
+ 					}
+ 				}
+ 				new_name = ldns_dnssec_name_new();
+ 				if (!new_name) {
++					ldns_rdf_deep_free(l1);
++					ldns_rdf_deep_free(l2);
++					ldns_rdf_deep_free(ent_name);
+ 					return LDNS_STATUS_MEM_ERR;
+ 				}
+ 				new_name->name = ent_name;
+-				if (!new_name->name) {
+-					ldns_dnssec_name_free(new_name);
+-					return LDNS_STATUS_MEM_ERR;
+-				}
+ 				new_name->name_alloced = true;
+ 				new_node = LDNS_MALLOC(ldns_rbnode_t);
+ 				if (!new_node) {
++					ldns_rdf_deep_free(l1);
++					ldns_rdf_deep_free(l2);
+ 					ldns_dnssec_name_free(new_name);
+ 					return LDNS_STATUS_MEM_ERR;
+ 				}
+diff --git a/host2str.c b/host2str.c
+index 747d543..f39a184 100644
+--- a/host2str.c
++++ b/host2str.c
+@@ -1085,12 +1085,12 @@ ldns_rdf2buffer_str_ipseckey(ldns_buffer *output, const ldns_rdf *rdf)
+ 			/* no gateway */
+ 			break;
+ 		case 1:
+-			gateway_data = LDNS_XMALLOC(uint8_t, LDNS_IP4ADDRLEN);
+-                        if(!gateway_data)
+-                                return LDNS_STATUS_MEM_ERR;
+ 			if (ldns_rdf_size(rdf) < offset + LDNS_IP4ADDRLEN) {
+ 				return LDNS_STATUS_ERR;
+ 			}
++			gateway_data = LDNS_XMALLOC(uint8_t, LDNS_IP4ADDRLEN);
++                        if(!gateway_data)
++                                return LDNS_STATUS_MEM_ERR;
+ 			memcpy(gateway_data, &data[offset], LDNS_IP4ADDRLEN);
+ 			gateway = ldns_rdf_new(LDNS_RDF_TYPE_A,
+ 					LDNS_IP4ADDRLEN , gateway_data);
+@@ -1101,12 +1101,12 @@ ldns_rdf2buffer_str_ipseckey(ldns_buffer *output, const ldns_rdf *rdf)
+                         }
+ 			break;
+ 		case 2:
+-			gateway_data = LDNS_XMALLOC(uint8_t, LDNS_IP6ADDRLEN);
+-                        if(!gateway_data)
+-                                return LDNS_STATUS_MEM_ERR;
+ 			if (ldns_rdf_size(rdf) < offset + LDNS_IP6ADDRLEN) {
+ 				return LDNS_STATUS_ERR;
+ 			}
++			gateway_data = LDNS_XMALLOC(uint8_t, LDNS_IP6ADDRLEN);
++                        if(!gateway_data)
++                                return LDNS_STATUS_MEM_ERR;
+ 			memcpy(gateway_data, &data[offset], LDNS_IP6ADDRLEN);
+ 			offset += LDNS_IP6ADDRLEN;
+ 			gateway =
+@@ -1129,6 +1129,7 @@ ldns_rdf2buffer_str_ipseckey(ldns_buffer *output, const ldns_rdf *rdf)
+ 	}
+ 
+ 	if (ldns_rdf_size(rdf) <= offset) {
++                ldns_rdf_deep_free(gateway);
+ 		return LDNS_STATUS_ERR;
+ 	}
+ 	public_key_size = ldns_rdf_size(rdf) - offset;
+diff --git a/host2wire.c b/host2wire.c
+index 4d8aa30..a12b6b0 100644
+--- a/host2wire.c
++++ b/host2wire.c
+@@ -67,17 +67,27 @@ ldns_dname2buffer_wire_compress(ldns_buffer *buffer, const ldns_rdf *name, ldns_
+ 	{
+ 		/* Not found. Write cache entry, take off first label, write it, */
+ 		/* try again with the rest of the name. */
+-		node = LDNS_MALLOC(ldns_rbnode_t);
+-		if(!node)
+-		{
+-			return LDNS_STATUS_MEM_ERR;
+-		}
+ 		if (ldns_buffer_position(buffer) < 16384) {
+-			node->key = ldns_rdf_clone(name);
++			ldns_rdf *key;
++
++			node = LDNS_MALLOC(ldns_rbnode_t);
++			if(!node)
++			{
++				return LDNS_STATUS_MEM_ERR;
++			}
++
++			key = ldns_rdf_clone(name);
++			if (!key) {
++				LDNS_FREE(node);
++				return LDNS_STATUS_MEM_ERR;
++			}
++			node->key = key;
+ 			node->data = (void *) (intptr_t) ldns_buffer_position(buffer);
+ 			if(!ldns_rbtree_insert(compression_data,node))
+ 			{
+ 				/* fprintf(stderr,"Name not found but now it's there?\n"); */
++				ldns_rdf_deep_free(key);
++				LDNS_FREE(node);
+ 			}
+ 		}
+ 		label = ldns_dname_label(name, 0);
+diff --git a/net.c b/net.c
+index 9e048d2..6e6a12b 100644
+--- a/net.c
++++ b/net.c
+@@ -202,6 +202,7 @@ ldns_tcp_connect_from(const struct sockaddr_storage *to, socklen_t tolen,
+ 	}
+ #endif
+ 	if (from && bind(sockfd, (const struct sockaddr*)from, fromlen) == SOCK_INVALID){
++		close_socket(sockfd);
+ 		return 0;
+ 	}
+ 
+@@ -337,7 +338,7 @@ ldns_tcp_send_from(uint8_t **result,  ldns_buffer *qbin,
+ 	answer = ldns_tcp_read_wire_timeout(sockfd, answer_size, timeout);
+ 	close_socket(sockfd);
+ 
+-	if (*answer_size == 0) {
++	if (!answer) {
+ 		/* oops */
+ 		return LDNS_STATUS_NETWORK_ERR;
+ 	}
+@@ -390,6 +391,7 @@ ldns_udp_bgsend_from(ldns_buffer *qbin,
+ 	}
+ 
+ 	if (from && bind(sockfd, (const struct sockaddr*)from, fromlen) == -1){
++		close_socket(sockfd);
+ 		return 0;
+ 	}
+ 
+@@ -437,7 +439,7 @@ ldns_udp_send_from(uint8_t **result, ldns_buffer *qbin,
+ 	answer = ldns_udp_read_wire(sockfd, answer_size, NULL, NULL);
+ 	close_socket(sockfd);
+ 
+-	if (*answer_size == 0) {
++	if (!answer) {
+ 		/* oops */
+ 		return LDNS_STATUS_NETWORK_ERR;
+ 	}
+@@ -571,6 +573,9 @@ ldns_send_buffer(ldns_pkt **result, ldns_resolver *r, ldns_buffer *qb, ldns_rdf
+ 		if (!reply_bytes) {
+ 			/* the current nameserver seems to have a problem, blacklist it */
+ 			if (ldns_resolver_fail(r)) {
++				if(src) {
++					LDNS_FREE(src);
++				}
+ 				LDNS_FREE(ns);
+ 				return LDNS_STATUS_ERR;
+ 			} else {
+@@ -918,6 +923,9 @@ ldns_axfr_start(ldns_resolver *resolver, const ldns_rdf *domain, ldns_rr_class c
+ 				src, (socklen_t)src_len,
+ 				ldns_resolver_timeout(resolver));
+ 	}
++	if (src) {
++		LDNS_FREE(src);
++	}
+ 
+ 	if (resolver->_socket == SOCK_INVALID) {
+ 		ldns_pkt_free(query);
+diff --git a/packet.c b/packet.c
+index 95f8f3f..f8fb960 100644
+--- a/packet.c
++++ b/packet.c
+@@ -928,11 +928,13 @@ ldns_pkt_query_new_frm_str_internal(ldns_pkt **p, const char *name,
+ 	}
+ 
+ 	if (!ldns_pkt_set_flags(packet, flags)) {
++		ldns_pkt_free(packet);
+ 		return LDNS_STATUS_ERR;
+ 	}
+ 
+ 	question_rr = ldns_rr_new();
+ 	if (!question_rr) {
++		ldns_pkt_free(packet);
+ 		return LDNS_STATUS_MEM_ERR;
+ 	}
+ 
+diff --git a/radix.c b/radix.c
+index 43f7365..9695e13 100644
+--- a/radix.c
++++ b/radix.c
+@@ -225,9 +225,9 @@ ldns_radix_insert(ldns_radix_t* tree, uint8_t* key, radix_strlen_t len,
+ 		}
+ 	} else if (pos == len) {
+ 		/** Exact match found */
++		LDNS_FREE(add);
+ 		if (prefix->data) {
+ 			/* Element already exists */
+-			LDNS_FREE(add);
+ 			return LDNS_STATUS_EXISTS_ERR;
+ 		}
+ 		prefix->data = data;
+@@ -1120,12 +1120,15 @@ ldns_radix_array_split(ldns_radix_array_t* array, uint8_t* key,
+ 		if (array->len - common_len > 1) {
+ 			if (!ldns_radix_prefix_remainder(common_len+1,
+ 				array->str, array->len, &s1, &l1)) {
++				LDNS_FREE(common);
+ 				return 0;
+ 			}
+ 		}
+ 		if (strlen_to_add - common_len > 1) {
+ 			if (!ldns_radix_prefix_remainder(common_len+1,
+ 				str_to_add, strlen_to_add, &s2, &l2)) {
++				LDNS_FREE(common);
++				LDNS_FREE(s1);
+ 				return 0;
+ 			}
+ 		}
+diff --git a/str2host.c b/str2host.c
+index c3afba1..68bccf1 100644
+--- a/str2host.c
++++ b/str2host.c
+@@ -445,6 +445,7 @@ ldns_str2rdf_str(ldns_rdf **rd, const char *str)
+ 		*++dp = ch;
+ 	}
+ 	if (! str) {
++		LDNS_FREE(data);
+ 		return LDNS_STATUS_SYNTAX_BAD_ESCAPE;
+ 	}
+ 	length = (size_t)(dp - data);
+@@ -1494,6 +1495,7 @@ ldns_str2rdf_long_str(ldns_rdf **rd, const char *str)
+ 		}
+ 	}
+ 	if (! str) {
++		LDNS_FREE(data);
+ 		return LDNS_STATUS_SYNTAX_BAD_ESCAPE;
+ 	}
+ 	if (!(length = (size_t)(dp - data))) {
+-- 
+2.20.1
+
