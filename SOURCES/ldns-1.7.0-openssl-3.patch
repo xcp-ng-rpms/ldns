@@ -1,0 +1,313 @@
+From 163bb7b7316250080fd2fac07a29639a8b25f416 Mon Sep 17 00:00:00 2001
+From: "W.C.A. Wijngaards" <wouter@nlnetlabs.nl>
+Date: Mon, 2 Aug 2021 10:45:42 +0200
+Subject: [PATCH] * Fix #135: Fix compile with OpenSSL-3.0.0-beta2 (backport).
+
+[Philippe Coval]
+
+Ajusted to apply on branch release-1.7.x
+
+[Philippe Coval]
+
+Ajusted to apply on tag release-1.7.0
+
+(cherry picked from commit 12ab6f7a408cd99e9b43b7db86724c2ee66bc36e)
+Origin: https://github.com/NLnetLabs/ldns/commit/12ab6f7a408cd99e9b43b7db86724c2ee66bc36e
+Relate-to: https://github.com/NLnetLabs/ldns/issues/135
+Relate-to: https://github.com/NLnetLabs/ldns/pull/292
+Last-Update: 2026-01-15
+Signed-off-by: Philippe Coval <philippe.coval@vates.tech>
+---
+ Changelog        |   5 ++-
+ acx_nlnetlabs.m4 | 100 +++++++++++++++++++++++------------------------
+ configure.ac     |  14 ++++++-
+ dnssec_sign.c    |  13 ++++--
+ 4 files changed, 75 insertions(+), 57 deletions(-)
+
+diff --git a/Changelog b/Changelog
+index 0bd3658e..fef934c4 100644
+--- a/Changelog
++++ b/Changelog
+@@ -1,4 +1,7 @@
+-1.7.0	2016-12-20
++1.7.0.1	2021-??-??
++	* Fix #135: Fix compile with OpenSSL-3.0.0-beta2.
++
++1.7.0	2016-12-19
+ 	* Fix lookup of relative names in ldns_resolver_search.
+ 	* bugfix #548: Double free for answers > 4096 in ldns_resolver_send_pkt
+ 	* Follow CNAME's when tracing with drill (TODO dnssec trace)
+diff --git a/acx_nlnetlabs.m4 b/acx_nlnetlabs.m4
+index a6c174f1..5e79c2fb 100644
+--- a/acx_nlnetlabs.m4
++++ b/acx_nlnetlabs.m4
+@@ -446,15 +446,12 @@ AC_DEFUN([ACX_CHECK_FORMAT_ATTRIBUTE],
+ AC_MSG_CHECKING(whether the C compiler (${CC-cc}) accepts the "format" attribute)
+ AC_CACHE_VAL(ac_cv_c_format_attribute,
+ [ac_cv_c_format_attribute=no
+-AC_TRY_COMPILE(
+-[#include <stdio.h>
++AC_COMPILE_IFELSE([AC_LANG_PROGRAM([[#include <stdio.h>
+ void f (char *format, ...) __attribute__ ((format (printf, 1, 2)));
+ void (*pf) (char *format, ...) __attribute__ ((format (printf, 1, 2)));
+-], [
++]], [[
+    f ("%s", "str");
+-],
+-[ac_cv_c_format_attribute="yes"],
+-[ac_cv_c_format_attribute="no"])
++]])],[ac_cv_c_format_attribute="yes"],[ac_cv_c_format_attribute="no"])
+ ])
+ 
+ AC_MSG_RESULT($ac_cv_c_format_attribute)
+@@ -483,14 +480,11 @@ AC_DEFUN([ACX_CHECK_UNUSED_ATTRIBUTE],
+ AC_MSG_CHECKING(whether the C compiler (${CC-cc}) accepts the "unused" attribute)
+ AC_CACHE_VAL(ac_cv_c_unused_attribute,
+ [ac_cv_c_unused_attribute=no
+-AC_TRY_COMPILE(
+-[#include <stdio.h>
++AC_COMPILE_IFELSE([AC_LANG_PROGRAM([[#include <stdio.h>
+ void f (char *u __attribute__((unused)));
+-], [
++]], [[
+    f ("x");
+-],
+-[ac_cv_c_unused_attribute="yes"],
+-[ac_cv_c_unused_attribute="no"])
++]])],[ac_cv_c_unused_attribute="yes"],[ac_cv_c_unused_attribute="no"])
+ ])
+ 
+ dnl Setup ATTR_UNUSED config.h parts.
+@@ -547,7 +541,7 @@ dnl as a requirement so that is gets called before LIBTOOL
+ dnl because libtools 'AC_REQUIRE' names are right after this one, before
+ dnl this function contents.
+ AC_REQUIRE([ACX_LIBTOOL_C_PRE])
+-AC_PROG_LIBTOOL
++LT_INIT
+ ])
+ 
+ dnl Detect if u_char type is defined, otherwise define it.
+@@ -668,22 +662,28 @@ AC_DEFUN([ACX_SSL_CHECKS], [
+             HAVE_SSL=yes
+             dnl assume /usr is already in the lib and dynlib paths.
+             if test "$ssldir" != "/usr" -a "$ssldir" != ""; then
+-                LDFLAGS="$LDFLAGS -L$ssldir/lib"
+-                LIBSSL_LDFLAGS="$LIBSSL_LDFLAGS -L$ssldir/lib"
+-                ACX_RUNTIME_PATH_ADD([$ssldir/lib])
++		if test ! -d "$ssldir/lib" -a -d "$ssldir/lib64"; then
++			LDFLAGS="$LDFLAGS -L$ssldir/lib64"
++			LIBSSL_LDFLAGS="$LIBSSL_LDFLAGS -L$ssldir/lib64"
++			ACX_RUNTIME_PATH_ADD([$ssldir/lib64])
++		else
++			LDFLAGS="$LDFLAGS -L$ssldir/lib"
++			LIBSSL_LDFLAGS="$LIBSSL_LDFLAGS -L$ssldir/lib"
++			ACX_RUNTIME_PATH_ADD([$ssldir/lib])
++		fi
+             fi
+         
+-            AC_MSG_CHECKING([for HMAC_Update in -lcrypto])
++            AC_MSG_CHECKING([for EVP_sha256 in -lcrypto])
+             LIBS="$LIBS -lcrypto"
+             LIBSSL_LIBS="$LIBSSL_LIBS -lcrypto"
+-            AC_TRY_LINK(, [
+-                int HMAC_Update(void);
+-                (void)HMAC_Update();
+-              ], [
++            AC_LINK_IFELSE([AC_LANG_PROGRAM([[]], [[
++                int EVP_sha256(void);
++                (void)EVP_sha256();
++              ]])],[
+                 AC_MSG_RESULT(yes)
+-                AC_DEFINE([HAVE_HMAC_UPDATE], 1, 
+-                          [If you have HMAC_Update])
+-              ], [
++                AC_DEFINE([HAVE_EVP_SHA256], 1,
++                          [If you have EVP_sha256])
++              ],[
+                 AC_MSG_RESULT(no)
+                 # check if -lwsock32 or -lgdi32 are needed.	
+                 BAKLIBS="$LIBS"
+@@ -691,12 +691,12 @@ AC_DEFUN([ACX_SSL_CHECKS], [
+                 LIBS="$LIBS -lgdi32"
+                 LIBSSL_LIBS="$LIBSSL_LIBS -lgdi32"
+                 AC_MSG_CHECKING([if -lcrypto needs -lgdi32])
+-                AC_TRY_LINK([], [
+-                    int HMAC_Update(void);
+-                    (void)HMAC_Update();
+-                  ],[
+-                    AC_DEFINE([HAVE_HMAC_UPDATE], 1, 
+-                        [If you have HMAC_Update])
++                AC_LINK_IFELSE([AC_LANG_PROGRAM([[]], [[
++                    int EVP_sha256(void);
++                    (void)EVP_sha256();
++                  ]])],[
++                    AC_DEFINE([HAVE_EVP_SHA256], 1,
++                        [If you have EVP_sha256])
+                     AC_MSG_RESULT(yes) 
+                   ],[
+                     AC_MSG_RESULT(no)
+@@ -705,12 +705,12 @@ AC_DEFUN([ACX_SSL_CHECKS], [
+                     LIBS="$LIBS -ldl"
+                     LIBSSL_LIBS="$LIBSSL_LIBS -ldl"
+                     AC_MSG_CHECKING([if -lcrypto needs -ldl])
+-                    AC_TRY_LINK([], [
+-                        int HMAC_Update(void);
+-                        (void)HMAC_Update();
+-                      ],[
+-                        AC_DEFINE([HAVE_HMAC_UPDATE], 1, 
+-                            [If you have HMAC_Update])
++                    AC_LINK_IFELSE([AC_LANG_PROGRAM([[]], [[
++                        int EVP_sha256(void);
++                        (void)EVP_sha256();
++                      ]])],[
++                        AC_DEFINE([HAVE_EVP_SHA256], 1,
++                            [If you have EVP_sha256])
+                         AC_MSG_RESULT(yes) 
+                       ],[
+                         AC_MSG_RESULT(no)
+@@ -719,12 +719,12 @@ AC_DEFUN([ACX_SSL_CHECKS], [
+                         LIBS="$LIBS -ldl -pthread"
+                         LIBSSL_LIBS="$LIBSSL_LIBS -ldl -pthread"
+                         AC_MSG_CHECKING([if -lcrypto needs -ldl -pthread])
+-                        AC_TRY_LINK([], [
+-                            int HMAC_Update(void);
+-                            (void)HMAC_Update();
+-                          ],[
+-                            AC_DEFINE([HAVE_HMAC_UPDATE], 1, 
+-                                [If you have HMAC_Update])
++                        AC_LINK_IFELSE([AC_LANG_PROGRAM([[]], [[
++                            int EVP_sha256(void);
++                            (void)EVP_sha256();
++                          ]])],[
++                            AC_DEFINE([HAVE_EVP_SHA256], 1,
++                                [If you have EVP_sha256])
+                             AC_MSG_RESULT(yes) 
+                           ],[
+                             AC_MSG_RESULT(no)
+@@ -889,7 +889,7 @@ AC_CACHE_VAL(cv_cc_deprecated_$cache,
+ [
+ echo '$3' >conftest.c
+ echo 'void f(){ $2 }' >>conftest.c
+-if test -z "`$CC -c conftest.c 2>&1 | grep deprecated`"; then
++if test -z "`$CC $CPPFLAGS $CFLAGS -c conftest.c 2>&1 | grep -e deprecated -e unavailable`"; then
+ eval "cv_cc_deprecated_$cache=no"
+ else
+ eval "cv_cc_deprecated_$cache=yes"
+@@ -915,7 +915,7 @@ dnl a nonblocking socket do not work, a new call to select is necessary.
+ AC_DEFUN([ACX_CHECK_NONBLOCKING_BROKEN],
+ [
+ AC_MSG_CHECKING([if nonblocking sockets work])
+-if echo $target | grep mingw32 >/dev/null; then 
++if echo $host | grep mingw >/dev/null; then
+ 	AC_MSG_RESULT([no (windows)])
+ 	AC_DEFINE([NONBLOCKING_IS_BROKEN], 1, [Define if the network stack does not fully support nonblocking io (causes lower performance).])
+ else
+@@ -1057,7 +1057,7 @@ dnl defines MKDIR_HAS_ONE_ARG
+ AC_DEFUN([ACX_MKDIR_ONE_ARG],
+ [
+ AC_MSG_CHECKING([whether mkdir has one arg])
+-AC_TRY_COMPILE([
++AC_COMPILE_IFELSE([AC_LANG_PROGRAM([[
+ #include <stdio.h>
+ #include <unistd.h>
+ #ifdef HAVE_WINSOCK2_H
+@@ -1066,14 +1066,12 @@ AC_TRY_COMPILE([
+ #ifdef HAVE_SYS_STAT_H
+ #include <sys/stat.h>
+ #endif
+-], [
++]], [[
+ 	(void)mkdir("directory");
+-],
+-AC_MSG_RESULT(yes)
++]])],[AC_MSG_RESULT(yes)
+ AC_DEFINE(MKDIR_HAS_ONE_ARG, 1, [Define if mkdir has one argument.])
+-,
+-AC_MSG_RESULT(no)
+-)
++],[AC_MSG_RESULT(no)
++])
+ ])dnl end of ACX_MKDIR_ONE_ARG
+ 
+ dnl Check for ioctlsocket function. works on mingw32 too.
+diff --git a/configure.ac b/configure.ac
+index b7c6c811..29f8eddf 100644
+--- a/configure.ac
++++ b/configure.ac
+@@ -331,7 +331,8 @@ if grep VERSION_TEXT $ssldir/include/openssl/opensslv.h | grep "LibreSSL" >/dev/
+ else
+ 	AC_MSG_RESULT([no])
+ fi
+-AC_CHECK_FUNCS([EVP_sha256 EVP_sha384 EVP_sha512 ENGINE_load_cryptodev EVP_PKEY_keygen ECDSA_SIG_get0 EVP_MD_CTX_new EVP_PKEY_base_id DSA_SIG_set0 DSA_SIG_get0 EVP_dss1 DSA_get0_pqg DSA_get0_key])
++AC_CHECK_HEADERS([openssl/ssl.h openssl/evp.h openssl/engine.h openssl/conf.h])
++AC_CHECK_FUNCS([EVP_sha256 EVP_sha384 EVP_sha512 EVP_PKEY_keygen ECDSA_SIG_get0 EVP_MD_CTX_new EVP_PKEY_base_id DSA_SIG_set0 DSA_SIG_get0 EVP_dss1 DSA_get0_pqg DSA_get0_key EVP_cleanup ENGINE_cleanup ENGINE_free CRYPTO_cleanup_all_ex_data ERR_free_strings CONF_modules_unload OPENSSL_init_ssl OPENSSL_init_crypto ERR_load_crypto_strings CRYPTO_memcmp EVP_PKEY_get_base_id])
+ 
+ # for macosx, see if glibtool exists and use that
+ # BSD's need to know the version...
+@@ -361,7 +362,11 @@ AC_MSG_CHECKING([if GOST works])
+ if test c${cross_compiling} = cno; then
+ BAKCFLAGS="$CFLAGS"
+ if test -n "$ssldir"; then
++    if test ! -d "$ssldir/lib" -a -d "$ssldir/lib64"; then
++	CFLAGS="$CFLAGS -Wl,-rpath,$ssldir/lib64"
++    else
+ 	CFLAGS="$CFLAGS -Wl,-rpath,$ssldir/lib"
++    fi
+ fi
+ AC_RUN_IFELSE([AC_LANG_SOURCE([[
+ #include <string.h>
+@@ -643,7 +648,12 @@ AC_SUBST(LIBSSL_CPPFLAGS)
+ AC_SUBST(LIBSSL_LDFLAGS)
+ AC_SUBST(LIBSSL_LIBS)
+ if test "x$HAVE_SSL" = "xyes"; then
+-AC_SUBST(LIBSSL_SSL_LIBS, ["-lssl $LIBSSL_LIBS"])
++    if echo "$LIBSSL_LIBS" | grep -- "-lssl" >/dev/null 2>&1; then
++	LIBSSL_SSL_LIBS="$LIBSSL_LIBS"
++    else
++	LIBSSL_SSL_LIBS="-lssl $LIBSSL_LIBS"
++    fi
++    AC_SUBST(LIBSSL_SSL_LIBS, "$LIBSSL_SSL_LIBS")
+ fi
+ CPPFLAGS=$tmp_CPPFLAGS
+ LDFLAGS=$tmp_LDFLAGS
+diff --git a/dnssec_sign.c b/dnssec_sign.c
+index 22f09816..a2f43a5c 100644
+--- a/dnssec_sign.c
++++ b/dnssec_sign.c
+@@ -408,7 +408,10 @@ ldns_pkey_is_ecdsa(EVP_PKEY* pkey)
+ {
+         EC_KEY* ec;
+         const EC_GROUP* g;
+-#ifdef HAVE_EVP_PKEY_BASE_ID
++#ifdef HAVE_EVP_PKEY_GET_BASE_ID
++        if(EVP_PKEY_get_base_id(pkey) != EVP_PKEY_EC)
++                return 0;
++#elif defined(HAVE_EVP_PKEY_BASE_ID)
+         if(EVP_PKEY_base_id(pkey) != EVP_PKEY_EC)
+                 return 0;
+ #else
+@@ -502,7 +505,9 @@ ldns_sign_public_evp(ldns_buffer *to_sign,
+ #ifdef USE_DSA
+ #ifndef S_SPLINT_S
+ 	/* unfortunately, OpenSSL output is different from DNS DSA format */
+-# ifdef HAVE_EVP_PKEY_BASE_ID
++# ifdef HAVE_EVP_PKEY_GET_BASE_ID
++	if (EVP_PKEY_get_base_id(key) == EVP_PKEY_DSA) {
++# elif defined(HAVE_EVP_PKEY_BASE_ID)
+ 	if (EVP_PKEY_base_id(key) == EVP_PKEY_DSA) {
+ # else
+ 	if (EVP_PKEY_type(key->type) == EVP_PKEY_DSA) {
+@@ -514,7 +519,9 @@ ldns_sign_public_evp(ldns_buffer *to_sign,
+ #endif
+ #if defined(USE_ECDSA) || defined(USE_ED25519) || defined(USE_ED448)
+ 	if(
+-#  ifdef HAVE_EVP_PKEY_BASE_ID
++#  ifdef HAVE_EVP_PKEY_GET_BASE_ID
++		EVP_PKEY_get_base_id(key)
++#  elif defined(HAVE_EVP_PKEY_BASE_ID)
+ 		EVP_PKEY_base_id(key)
+ #  else
+ 		EVP_PKEY_type(key->type)
+-- 
+2.52.0
+
