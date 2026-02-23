@@ -39,7 +39,7 @@
 Summary: Low-level DNS(SEC) library with API
 Name: ldns
 Version: 1.7.0
-Release: 21%{?dist}
+Release: 21.1%{?dist}
 
 License: BSD
 Url: http://www.nlnetlabs.nl/%{name}/
@@ -48,6 +48,13 @@ Patch1: ldns-1.7.0-multilib.patch
 Patch2: ldns-1.7.0-parse-limit.patch
 Patch3: ldns-1.7.0-realloc.patch
 Patch4: ldns-1.7.0-coverity.patch
+# Forwarded: https://github.com/NLnetLabs/ldns/pull/292#review
+Patch5: ldns-1.7.0-openssl-3.patch
+
+# Reconfigure like snapshot if patched
+%if "%{patches}" != ""
+%define snapshot 1
+%endif
 
 Group: System Environment/Libraries
 # Only needed for builds from svn snapshot
@@ -67,8 +74,9 @@ BuildRequires: openssl-devel >= 1.0.2k
 BuildRequires: gcc-c++
 BuildRequires: doxygen
 
-# for snapshots only
-# BuildRequires: libtool, autoconf, automake
+%if 0%{snapshot}
+BuildRequires: libtool, autoconf, automake
+%endif
 %if %{with python2}
 BuildRequires: python2-devel, swig
 %endif
@@ -156,15 +164,17 @@ This package contains documentation for the ldns library
 %setup -qcn %{pkgname}
 pushd %{pkgname}
 
-%patch1 -p2 -b .multilib
-%patch2 -p1 -b .limit
-%patch3 -p1 -b .realloc
-%patch4 -p1 -b .covscan
+%patch -P 1 -p2
+%patch -P 2 -p1
+%patch -P 3 -p1
+%patch -P 4 -p1
+%patch -P 5 -p1
+
 # To built svn snapshots
 %if 0%{snapshot}
   rm config.guess config.sub ltmain.sh
   aclocal
-  libtoolize -c --install
+  libtoolize -c --install --force
   autoreconf --install
 %endif
 
@@ -355,6 +365,12 @@ rm -rf doc/man
 %doc doc
 
 %changelog
+* Tue Jan 13 2026 Philippe Coval <philippe.coval@vates.tech> 1.7.0-21.1
+- Update obsolete %patch macro
+- Reconfigure if patches are touching autotools file
+- Add patch for openssl-3 support
+- Rebuild for openssl-3
+
 * Tue Jul 23 2019 Martin Osvald <mosvald@redhat.com> - 1.7.0-21
 - Fix for issues found by covscan (#1602571)
 
