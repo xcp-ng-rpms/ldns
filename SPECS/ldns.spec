@@ -39,7 +39,7 @@
 Summary: Low-level DNS(SEC) library with API
 Name: ldns
 Version: 1.7.0
-Release: 21.1%{?dist}
+Release: 21.2%{?dist}
 
 License: BSD
 Url: http://www.nlnetlabs.nl/%{name}/
@@ -50,6 +50,10 @@ Patch3: ldns-1.7.0-realloc.patch
 Patch4: ldns-1.7.0-coverity.patch
 # Forwarded: https://github.com/NLnetLabs/ldns/pull/292#review
 Patch5: ldns-1.7.0-openssl-3.patch
+
+# XCP-ng patches
+Patch1000: ldns-1.7-CVE-2026-10846-Fix-to-check-address-and-port-and-TXID.patch
+Patch1001: ldns-1.7-CVE-2026-10846-Match-question-from-query-in-response-and.patch
 
 # Reconfigure like snapshot if patched
 %if "%{patches}" != ""
@@ -169,6 +173,10 @@ pushd %{pkgname}
 %patch -P 3 -p1
 %patch -P 4 -p1
 %patch -P 5 -p1
+
+# XCP-ng patches
+%patch -P 1000 -p1
+%patch -P 1001 -p1
 
 # To built svn snapshots
 %if 0%{snapshot}
@@ -365,6 +373,9 @@ rm -rf doc/man
 %doc doc
 
 %changelog
+* Tue Jun 30 2026 Lucas Ravagnier <lucas.ravagnier@vates.tech> - 1.7.0-21.2
+- Fix CVE-2026-10846
+
 * Tue Jan 13 2026 Philippe Coval <philippe.coval@vates.tech> 1.7.0-21.1
 - Update obsolete %patch macro
 - Reconfigure if patches are touching autotools file
